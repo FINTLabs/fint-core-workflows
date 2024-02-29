@@ -1,14 +1,14 @@
 name: deploy to beta for fintlabs
 on:
+  push:
+    branches:
+      - ${{ inputs.branch-name }}
   workflow_call:
     inputs:
       branch-name:
         required: false
         type: string
 
-    push:
-      branches:
-        - ${{inputs.branch-name}}
 jobs:
   build-and-push:
     name: Build and push Docker image
