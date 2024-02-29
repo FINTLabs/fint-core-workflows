@@ -1,5 +1,4 @@
 name: deploy to beta for fintlabs
-
 on:
   workflow_call:
     inputs:
