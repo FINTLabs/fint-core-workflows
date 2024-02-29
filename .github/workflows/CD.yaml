@@ -6,7 +6,7 @@ on:
   workflow_call:
     inputs:
       branch-name:
-        required: false
+        required: true
         type: string
 
 jobs:
