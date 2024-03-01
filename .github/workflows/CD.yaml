@@ -9,7 +9,7 @@ on:
     cluster:
       required: true
       type: list
-    matrix:
+    org:
       required: true
       type: list
 
@@ -55,7 +55,7 @@ jobs:
     strategy:
       matrix:
         org:
-          - ${{inputs.matrix}}
+          - ${{inputs.org}}
         cluster:
           - {{inputs.cluster}}
     steps:
