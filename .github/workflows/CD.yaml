@@ -1,13 +1,14 @@
 name: deploy to beta for fintlabs
+
 on:
   push:
-      branches:
-        - ${{ inputs.branch-name }}
-  workflow_call:
-    inputs:
-      branch-name:
-        required: true
-        type: string
+    branches:
+      - ${{ inputs.branch-name }}
+
+inputs:
+  branch-name:
+    required: true
+    type: string
 
 jobs:
   build-and-push:
