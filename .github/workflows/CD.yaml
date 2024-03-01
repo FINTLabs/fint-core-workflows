@@ -6,12 +6,12 @@ on:
       branch-name:
         required: true
         type: string
-    cluster:
-      required: true
-      type: string
-    org:
-      required: true
-      type: string
+      cluster:
+        required: true
+        type: string
+      org:
+        required: true
+        type: string
 
 jobs:
   build-and-push:
