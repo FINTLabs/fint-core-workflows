@@ -1,24 +1,16 @@
 name: deploy to beta for fintlabs
 
 on:
-  push:
-    branches:
-      - ${{ inputs.branch-name }}
-
-inputs:
-  branch-name:
-    required: true
-    type: string
+  workflow_call:
+    inputs:
+      branch-name:
+        required: true
+        type: string
 
 jobs:
-  build-and-push:
-    name: Build and push Docker image
+  build_and_deploy:
+    name: Build and deploy process
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      tags: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3.3.0
