@@ -6,6 +6,12 @@ on:
       branch-name:
         required: true
         type: string
+    cluster:
+      required: true
+      type: list
+    matrix:
+      required: true
+      type: list
 
 jobs:
   build-and-push:
@@ -49,9 +55,9 @@ jobs:
     strategy:
       matrix:
         org:
-          - fintlabs-no
+          - ${{inputs.matrix}}
         cluster:
-          - aks-beta-fint-2021-11-23
+          - {{inputs.cluster}}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3.3.0
