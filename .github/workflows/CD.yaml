@@ -8,10 +8,10 @@ on:
         type: string
     cluster:
       required: true
-      type: list
+      type: string
     org:
       required: true
-      type: list
+      type: string
 
 jobs:
   build-and-push:
@@ -55,9 +55,9 @@ jobs:
     strategy:
       matrix:
         org:
-          - ${{inputs.org}}
+          - ${{fromJson(inputs.org)}}
         cluster:
-          - {{inputs.cluster}}
+          - ${{fromJson(inputs.cluster)}}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3.3.0
