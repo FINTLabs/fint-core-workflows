@@ -1,8 +1,8 @@
 name: deploy to beta for fintlabs
 on:
   push:
-    branches:
-      - ${{ github.event.inputs.branch-name }}
+      branches:
+        - ${{ inputs.branch-name }}
   workflow_call:
     inputs:
       branch-name:
