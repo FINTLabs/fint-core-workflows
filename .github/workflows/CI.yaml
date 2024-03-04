@@ -2,6 +2,9 @@ name: CI
 
 on:
   workflow_call:
+    inputs:
+      token:
+        type: password
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -42,6 +45,6 @@ jobs:
       - name: Trigger CD
         uses: peter-evans/repository-dispatch@v2
         with:
-          token: ${{ secrets.GITHUBACTION_TOKEN }}
+          token: ${{ inputs.token }}
           repository: ${{ github.repository }}
           event-type: trigger-cd
