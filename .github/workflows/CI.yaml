@@ -2,6 +2,10 @@ name: CI
 
 on:
   workflow_call:
+    inputs:
+      javaVersion:
+        required: false
+        type: string
 
 jobs:
   build:
@@ -14,11 +18,11 @@ jobs:
         id: get_repo
         run: echo ::set-output name=REPO::${GITHUB_REPOSITORY#*/}
 
-      - name: Setup Java 17
+      - name: Setup Java ${{inputs.javaVersion}}
         uses: actions/setup-java@v3.12.0
         with:
           distribution: 'adopt'
-          java-version: '17'
+          java-version: ${{inputs.javaVersion}}
 
       - name: Gradle Wrapper Validation
         uses: gradle/wrapper-validation-action@v1.0.6

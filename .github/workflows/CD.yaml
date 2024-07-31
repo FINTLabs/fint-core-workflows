@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       branch-name:
-        required: true
+        required: false
         type: string
       cluster:
         required: true
@@ -55,9 +55,9 @@ jobs:
     strategy:
       matrix:
         org:
-          - ${{fromJson(inputs.org)}}
+          - ${{inputs.org}}
         cluster:
-          - ${{fromJson(inputs.cluster)}}
+          - ${{inputs.cluster}}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3.3.0
