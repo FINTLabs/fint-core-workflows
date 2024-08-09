@@ -12,6 +12,11 @@ on:
       org:
         required: true
         type: string
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+      AKS_AKS_BETA_FINT_2021_11_23_FINT_GITHUB:
+        required: true
 
 jobs:
   build-and-push:
