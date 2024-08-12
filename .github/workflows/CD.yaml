@@ -20,8 +20,8 @@ on:
       docker_password:
         required: true
 
-    run: echo "docker username ${{ secrets.docker_username }}"
 jobs:
+  run: echo "docker username ${{ secrets.docker_username }}"
   build-and-push:
     name: Build and deploy process
     runs-on: ubuntu-latest
