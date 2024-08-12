@@ -6,6 +6,9 @@ on:
       javaVersion:
         required: false
         type: string
+    secrets:
+      GITHUBACTION_TOKEN:
+        required: true
 
 jobs:
   build:
