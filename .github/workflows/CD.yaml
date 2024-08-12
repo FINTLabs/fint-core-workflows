@@ -19,6 +19,9 @@ on:
         required: true
       docker_password:
         required: true
+      registry:
+        required: true
+
 
 jobs:
   build-and-push:
