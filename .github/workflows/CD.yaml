@@ -13,11 +13,11 @@ on:
         required: true
         type: string
     secrets:
-      TOKEN:
-        required: true
       AKS_AKS_BETA_FINT_2021_11_23_FINT_GITHUB:
         required: true
       docker_username:
+        required: true
+      docker_password:
         required: true
 
 jobs:
