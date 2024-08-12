@@ -15,9 +15,9 @@ on:
     secrets:
       AKS_AKS_BETA_FINT_2021_11_23_FINT_GITHUB:
         required: true
-      docker_username:
+      actor:
         required: true
-      docker_password:
+      GITHUB_TOKEN:
         required: true
 
 jobs:
