@@ -17,6 +17,8 @@ on:
         required: true
       AKS_AKS_BETA_FINT_2021_11_23_FINT_GITHUB:
         required: true
+      docker_username:
+        required: true
 
 jobs:
   build-and-push:
