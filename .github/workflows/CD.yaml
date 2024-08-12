@@ -17,7 +17,7 @@ on:
         required: true
       actor:
         required: true
-      GITHUB_TOKEN_docker:
+      docker_password:
         required: true
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.docker_password }}
 
       - name: Extract metadata (tags, labels) for Docker
         uses: docker/metadata-action@v5
