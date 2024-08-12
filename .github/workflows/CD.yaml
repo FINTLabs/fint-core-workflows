@@ -17,7 +17,7 @@ on:
         required: true
       actor:
         required: true
-      GITHUB_TOKEN:
+      GITHUB_TOKEN_docker:
         required: true
 
 jobs:
