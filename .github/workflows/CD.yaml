@@ -101,8 +101,7 @@ jobs:
 
       - uses: azure/login@v1
         with:
-          creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', secrets.azure_creds)] }}"
-          #creds: ${{secrets.azure_credssteps.environment.outputs.result}}
+          creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', steps.environment.outputs.result)] }}"
 
       - uses: azure/use-kubelogin@v1.1
         with:
