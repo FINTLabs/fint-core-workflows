@@ -25,6 +25,8 @@ on:
         required: true
       docker_password:
         required: true
+      azure_creds:
+        required: false
 
 
 jobs:
@@ -99,7 +101,8 @@ jobs:
 
       - uses: azure/login@v1
         with:
-          creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', steps.environment.outputs.result)] }}"
+          #creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', steps.environment.outputs.result)] }}"
+          creds: ${{secrets.azure_creds}}
 
       - uses: azure/use-kubelogin@v1.1
         with:
