@@ -48,8 +48,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,enable=true,priority=100,prefix=sha-,suffix=,format=short
-            latest
+            type=sha,enable=true,priority=100,prefix=sha-,suffix=,format=short,
+            value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
