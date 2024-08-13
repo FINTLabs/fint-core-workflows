@@ -18,6 +18,10 @@ on:
       registry:
         required: true
         type: string
+      environment:
+        required: true
+        type: string
+
     secrets:
       AKS_AKS_BETA_FINT_2021_11_23_FINT_GITHUB:
         required: true
@@ -61,6 +65,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+
+
+
   deploy-to-aks:
     name: deploy for ${{ matrix.org }} to ${{ matrix.cluster }}
     runs-on: ubuntu-latest
@@ -101,7 +108,7 @@ jobs:
 
       - uses: azure/login@v1
         with:
-          creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', steps.environment.outputs.result)] }}"
+          creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', inputs.enviorment)] }}"
 
       - uses: azure/use-kubelogin@v1.1
         with:
