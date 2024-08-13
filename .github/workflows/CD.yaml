@@ -21,8 +21,6 @@ on:
         required: true
       registry:
         required: true
-env:
-  registry: ${{env.REGISTRY}}
 
 
 jobs:
