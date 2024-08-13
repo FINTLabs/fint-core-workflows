@@ -3,6 +3,9 @@ name: CD
 on:
   workflow_call:
     inputs:
+      tags:
+        required: false
+        type: string
       branch-name:
         required: false
         type: string
@@ -48,7 +51,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,enable=true,priority=100,prefix=sha-,suffix=,format=short
+            type=sha,enable=true,priority=100,prefix=sha-,suffix=,format=short,
+            ${{inputs.tags}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
