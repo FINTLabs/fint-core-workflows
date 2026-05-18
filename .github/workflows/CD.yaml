@@ -1,129 +1,124 @@
-name: CD
+name: Reusable Build and Deploy
 
 on:
   workflow_call:
     inputs:
-      IMAGE_NAME:
-        required: true
-        type: string
-      branch-name:
-        required: false
-        type: string
       cluster:
+        description: 'Target AKS cluster name, e.g. "api" or "beta"'
         required: true
         type: string
-      org:
+      namespaces:
+        description: 'JSON array of namespaces, e.g. ["agderfk-no","nfk-no"]'
         required: true
-        type: string
-      registry:
-        required: true
-        type: string
-      environment:
-        required: false
         type: string
 
-    secrets:
-      AKS_AKS_BETA_FINT_2021_11_23_FINT_GITHUB:
-        required: true
-      docker_username:
-        required: true
-      docker_password:
-        required: true
-      azure_creds:
-        required: false
-
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
-    name: Build and deploy process
+    name: Build and push Docker image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tags: ${{ steps.set-tag.outputs.tag }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3.3.0
+        uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231 # 6.0.2
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2.1.0
-        with:
-          registry: ${{inputs.registry}}
-          username: ${{ secrets.docker_username }}
-          password: ${{ secrets.docker_password }}
+      - name: Set image tag
+        id: set-tag
+        run: |
+          IMAGE=$(echo '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')
+          SHORT_SHA=$(echo '${{ github.sha }}' | cut -c1-7)
+          echo "tag=${IMAGE}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Extract metadata (tags, labels) for Docker
-        uses: docker/metadata-action@v5
-        id: meta
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@9f4a8ea54ed9055d5f86c993e1f2ffa674f98344 # 4.1.0
         with:
-          images: ${{ inputs.registry }}/${{ inputs.IMAGE_NAME }}
-          tags: |
-            type=sha,enable=true,priority=100,prefix=sha-,suffix=,format=short
-            latest
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if image already exists
+        id: image-check
+        run: |
+          if docker manifest inspect "${{ steps.set-tag.outputs.tag }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+        if: steps.image-check.outputs.exists == 'false'
+        uses: docker/build-push-action@789f68658055d3ca993799b232b5c46dfe3f114d # 7.1.0
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-
-
+          tags: ${{ steps.set-tag.outputs.tag }}
 
   deploy-to-aks:
-    name: deploy for ${{ matrix.org }} to ${{ matrix.cluster }}
+    name: Deploy ${{ matrix.org }} to ${{ inputs.cluster }}
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs:
+      - build-and-push
     permissions:
       contents: read
       packages: write
     strategy:
+      fail-fast: false
       matrix:
-        org:
-          - ${{inputs.org}}
-        cluster:
-          - ${{inputs.cluster}}
+        org: ${{ fromJSON(inputs.namespaces) }}
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3.3.0
-
-      - name: Get environment
-        uses: actions/github-script@v6
-        id: environment
-        with:
-          script: return '${{ matrix.cluster }}'.split('-')[1]
-          result-encoding: string
+        uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231 # 6.0.2
 
       - name: Get resource group name
-        uses: actions/github-script@v6
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # 9.0.2
         id: resource-group
         with:
-          script: return 'rg-aks-${{ steps.environment.outputs.result }}'
+          script: return 'rg-aks-${{ inputs.cluster }}'
           result-encoding: string
 
-      - name: Bake manifests with Kustomize
-        id: bake
-        uses: azure/k8s-bake@v2.4
+      - uses: azure/login@9dfca5820a9055ed36abbd5b5710ace9f209ead5 # 3.0.0
         with:
-          renderEngine: 'kustomize'
-          kustomizationPath: 'kustomize/overlays/${{ steps.environment.outputs.result }}/${{ matrix.org }}'
+          creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', inputs.cluster)] }}"
 
-      - uses: azure/login@v1
-        with:
-          creds: ${{secrets.azure_creds}}
-
-      - uses: azure/use-kubelogin@v1.1
-        with:
-          kubelogin-version: 'v0.0.26'
 
       - name: Set the target cluster
-        uses: azure/aks-set-context@v3
+        uses: azure/aks-set-context@032204bfc4bf305539be9a8503ca4bd107984cc1 # 5.0.0
         with:
-          cluster-name: '${{ matrix.cluster }}'
+          cluster-name: '${{ inputs.cluster }}'
           resource-group: '${{ steps.resource-group.outputs.result }}'
           admin: 'true'
           use-kubelogin: 'true'
 
+      - name: Create namespace if it doesn't exist
+        run: |
+          if ! kubectl get namespace ${{ matrix.org }}; then
+            kubectl create namespace ${{ matrix.org }}
+          fi
+
+      - name: Bake manifests with Kustomize
+        id: bake
+        uses: azure/k8s-bake@3380337ee6d620431f618adf9d29c8c90614dab7 # 4.0.0
+        with:
+          renderEngine: 'kustomize'
+          kustomizationPath: 'kustomize/overlays/${{ steps.environment.outputs.result }}/${{ matrix.org }}'
+
+      - name: Substitute image into baked YAML
+        id: substitute
+        uses: Azure/k8s-artifact-substitute@4a192e52f0c9cf0f1c55af36fff17315947da7f0 # 2.0.0
+        with:
+          manifests: ${{ steps.bake.outputs.manifestsBundle }}
+          images: ${{ inputs.image-tags }}
+
       - name: Deploy
-        uses: azure/k8s-deploy@v4.9
+        uses: azure/k8s-deploy@031b17e50518d9ee4edffd855329e09244c5fafe # 6.0.0
         with:
           action: deploy
           manifests: ${{ steps.bake.outputs.manifestsBundle }}

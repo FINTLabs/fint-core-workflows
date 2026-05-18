@@ -1,55 +1,34 @@
-name: CI
+name: Gradle CI
 
 on:
   workflow_call:
     inputs:
-      javaVersion:
+      java-version:
+        description: 'Java version to use'
         required: false
         type: string
-    secrets:
-      GITHUBACTION_TOKEN:
-        required: true
+        default: '25'
+      gradle-command:
+        description: 'Gradle command to run'
+        required: false
+        type: string
+        default: 'build'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@main
+        uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231 # 6.0.2
 
-      - name: Get repo name
-        id: get_repo
-        run: echo ::set-output name=REPO::${GITHUB_REPOSITORY#*/}
-
-      - name: Setup Java ${{inputs.javaVersion}}
-        uses: actions/setup-java@v3.12.0
+      - name: Setup Java ${{ inputs.java-version }}
+        uses: actions/setup-java@b622de1dfa918ecc0ab28f40cd42e3c3752cd6c5 # 5.2.0
         with:
-          distribution: 'adopt'
-          java-version: ${{inputs.javaVersion}}
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
 
-      - name: Gradle Wrapper Validation
-        uses: gradle/wrapper-validation-action@v1.0.6
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@11d4d83c63a6ce61b32d8a9c4faddbdb04fe9917 # 6.1.0
 
-      - name: Gradle Setup
-        uses: gradle/gradle-build-action@v2.4.2
-        with:
-          gradle-version: wrapper
-
-      - name: Gradle build
-        run: |
-          ./gradlew build
-          mkdir data
-          cp ./build/libs/${GITHUB_REPOSITORY#*/}-*.jar ./data/app.jar
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v3.1.2
-        with:
-          name: ${{steps.get_repo.outputs.REPO}}
-          path: ./data/app.jar
-
-      - name: Trigger CD
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUBACTION_TOKEN }}
-          repository: ${{ github.repository }}
-          event-type: trigger-cd
+      - name: Run Gradle ${{ inputs.gradle-command }}
+        run: ./gradlew ${{ inputs.gradle-command }}
