@@ -60,20 +60,18 @@ on:
 jobs:
   deploy-api:
     if: github.ref == 'refs/heads/main'
-    uses: FINTLabs/fint-core-workflows/.github/workflows/deploy.yml@main
+    uses: FINTLabs/fint-core-workflows/.github/workflows/CI.yml@<latest-commit-hash>
     with:
       environment: api
       namespaces: '["afk-no","nfk-no","vlfk-no"]' # Edit to relevant namespaces
-      image-name: your-org/my-app # For example 
     secrets: inherit
 
   deploy-beta:
     if: github.ref == 'refs/heads/develop'
-    uses: your-org/workflows/.github/workflows/deploy.yml@main
+    uses: FINTLabs/fint-core-workflows/.github/workflows/CI.yml@<latest-commit-hash>
     with:
       environment: beta
       namespaces: '["afk-no","fintlabs-no"]' # Edit to relevant namespaces
-      image-name: your-org/my-app
     secrets: inherit
 ```
 
