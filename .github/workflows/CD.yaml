@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       cluster:
-        description: "Target AKS cluster name"
+        description: 'Target AKS cluster name, e.g. "api" or "beta"'
         required: true
         type: string
       namespaces:
@@ -77,23 +77,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231 # 6.0.2
 
-      - name: Get environment
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # 9.0.2
-        id: environment
-        with:
-          script: return '${{ inputs.cluster }}'.split('-')[1]
-          result-encoding: string
-
       - name: Get resource group name
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # 9.0.2
         id: resource-group
         with:
-          script: return 'rg-aks-${{ steps.environment.outputs.result }}'
+          script: return 'rg-aks-${{ inputs.cluster }}'
           result-encoding: string
 
       - uses: azure/login@9dfca5820a9055ed36abbd5b5710ace9f209ead5 # 3.0.0
         with:
-          creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', steps.environment.outputs.result)] }}"
+          creds: "${{ secrets[format('AKS_{0}_FINT_GITHUB', inputs.cluster)] }}"
 
 
       - name: Set the target cluster
