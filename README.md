@@ -4,11 +4,11 @@ Reusable GitHub Actions workflows for the Core team repos.
 
 | Workflow | Use |
 |---|---|
-| `cd-beta-api.yaml` | Deploy cycle like fint-core: `develop` to beta, `main` to api (production), with Kustomize |
+| `branch-deploy.yaml` | Deploy cycle like fint-core: `develop` to beta, `main` to api (production), with Kustomize |
 | `CD.yaml` | Older build and deploy workflow for one org and one cluster |
 | `CI.yaml` | Older Gradle build workflow |
 
-## cd-beta-api.yaml
+## branch-deploy.yaml
 
 ### What it does
 1. **Environment:** a push to `develop` deploys to beta (`aks-beta-fint-2021-11-23`). A push to `main` deploys to api (`aks-api-fint-2022-02-08`).
@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   cd:
-    uses: FINTLabs/fint-core-workflows/.github/workflows/cd-beta-api.yaml@main
+    uses: FINTLabs/fint-core-workflows/.github/workflows/branch-deploy.yaml@v1
     permissions:
       contents: read
       packages: write
@@ -56,7 +56,7 @@ The workflow builds each image and sets all of them in the same overlays.
 ```yaml
 jobs:
   cd:
-    uses: FINTLabs/fint-core-workflows/.github/workflows/cd-beta-api.yaml@main
+    uses: FINTLabs/fint-core-workflows/.github/workflows/branch-deploy.yaml@v1
     permissions:
       contents: read
       packages: write
@@ -102,3 +102,8 @@ All inputs are optional.
 - Compare the overlays with the cluster before the first deploy, for example with `kubectl diff -k kustomize/overlays/beta`.
   Changes made by hand in the cluster are lost on the first automated deploy.
 - Repos with more than one image use the `services` input (see above).
+
+## Versions
+- Callers use a major tag, for example `@v1`. Do not use `@main`, because a change on `main` would reach all repos at the same time.
+- A fix that does not change the inputs or the behavior moves the `v1` tag to the new commit, and also gets a full tag such as `v1.0.1`.
+- A change that can break a caller gets a new major tag (`v2`). Each repo then moves to `v2` when the team chooses.

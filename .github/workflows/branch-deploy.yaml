@@ -1,4 +1,4 @@
-name: CD (develop to beta, main to api)
+name: Branch deploy (develop to beta, main to api)
 
 # Reusable deploy cycle, the same model as fint-core:
 #   - push to develop deploys to beta, push to main deploys to api (production)
@@ -25,7 +25,7 @@ name: CD (develop to beta, main to api)
 #     cancel-in-progress: false
 #   jobs:
 #     cd:
-#       uses: FINTLabs/fint-core-workflows/.github/workflows/cd-beta-api.yaml@main
+#       uses: FINTLabs/fint-core-workflows/.github/workflows/branch-deploy.yaml@v1
 #       permissions:
 #         contents: read
 #         packages: write
