@@ -2,13 +2,18 @@ name: CD (develop to beta, main to api)
 
 # Reusable deploy cycle, the same model as fint-core:
 #   - push to develop deploys to beta, push to main deploys to api (production)
-#   - the image is ghcr.io/fintlabs/<image-name>:sha-<last commit that changed the app>
+#   - each image is ghcr.io/fintlabs/<image>:sha-<last commit that changed that service>
 #   - the build is skipped when that image is already in GHCR, so a push that only
 #     changes kustomize, workflows or docs goes straight to deploy
 #   - Kustomize overlays are found automatically:
 #       kustomize/overlays/<env>/kustomization.yaml          -> one target, namespace from the overlay
 #       kustomize/overlays/<env>/<org>/kustomization.yaml    -> one target per org, namespace = folder name
 #     A folder that ends with .disabled is skipped.
+#   - all images are set in the baked manifests, also in FLAIS Application resources
+#
+# One image (most repos): no inputs needed. The image name is the repository name.
+# More images (for example fint-core): give the services input, a JSON list with
+#   image (required), dockerfile, context and paths (space-separated) for each service.
 #
 # Caller (in the app repo, .github/workflows/cd.yaml):
 #
@@ -32,35 +37,42 @@ on:
   workflow_call:
     inputs:
       image-name:
-        description: Image name in ghcr.io/fintlabs. Default is the repository name.
+        description: Image name in ghcr.io/fintlabs (one image). Default is the repository name.
         required: false
         type: string
         default: ""
       dockerfile:
-        description: Path to the Dockerfile.
+        description: Path to the Dockerfile (one image).
         required: false
         type: string
         default: Dockerfile
       context:
-        description: Docker build context.
+        description: Docker build context (one image).
         required: false
         type: string
         default: .
-      build-args:
-        description: Docker build arguments, one KEY=value for each line.
+      app-paths:
+        description: Space-separated paths (one image). The last commit that changed them gives the image tag.
+        required: false
+        type: string
+        default: .
+      services:
+        description: >-
+          JSON list for more than one image. Each item has image (required), dockerfile, context and paths.
+          When set, image-name, dockerfile, context and app-paths are not used.
         required: false
         type: string
         default: ""
-      app-paths:
-        description: Space-separated paths. The last commit that changed them gives the image tag.
-        required: false
-        type: string
-        default: .
       exclude-paths:
-        description: Space-separated paths that do not change the app (no new image when only these change).
+        description: Space-separated paths that do not change any image. Use "" to turn this off.
         required: false
         type: string
         default: kustomize .github *.md
+      build-args:
+        description: Docker build arguments for all images, one KEY=value for each line.
+        required: false
+        type: string
+        default: ""
       kustomize-dir:
         description: Folder that holds one overlay folder for each environment (beta, api).
         required: false
@@ -75,9 +87,9 @@ on:
       environment:
         description: beta or api
         value: ${{ jobs.setup.outputs.environment }}
-      image:
-        description: The deployed image
-        value: ${{ jobs.setup.outputs.image }}
+      services:
+        description: JSON list of the services with their image references
+        value: ${{ jobs.setup.outputs.services }}
 
 jobs:
   setup:
@@ -86,8 +98,7 @@ jobs:
       contents: read
     outputs:
       environment: ${{ steps.env.outputs.environment }}
-      sha: ${{ steps.version.outputs.sha }}
-      image: ${{ steps.version.outputs.image }}
+      services: ${{ steps.version.outputs.services }}
       targets: ${{ steps.targets.outputs.targets }}
     steps:
       - uses: actions/checkout@v7
@@ -103,25 +114,43 @@ jobs:
             *) echo "::error::No environment for branch $GITHUB_REF_NAME. Use main or develop."; exit 1 ;;
           esac
 
-      - name: Resolve image version
+      - name: Resolve image versions
         id: version
         env:
+          SERVICES: ${{ inputs.services }}
           IMAGE_NAME: ${{ inputs.image-name || github.event.repository.name }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          CONTEXT: ${{ inputs.context }}
           APP_PATHS: ${{ inputs.app-paths }}
           EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
         run: |
           set -euo pipefail
-          read -ra spec <<< "$APP_PATHS"
-          read -ra excludes <<< "$EXCLUDE_PATHS"
-          for p in "${excludes[@]}"; do spec+=(":(exclude)$p"); done
-          sha=$(git log -1 --abbrev=7 --format=%h -- "${spec[@]}")
-          if [ -z "$sha" ]; then
-            sha=$(git rev-parse --short=7 HEAD)
+          if [ -n "$SERVICES" ]; then
+            input=$(jq -c '.' <<< "$SERVICES")
+          else
+            input=$(jq -nc --arg i "$IMAGE_NAME" --arg d "$DOCKERFILE" --arg c "$CONTEXT" --arg p "$APP_PATHS" \
+                      '[{image: $i, dockerfile: $d, context: $c, paths: $p}]')
           fi
-          image="ghcr.io/fintlabs/${IMAGE_NAME}:sha-${sha}"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "image: $image"
+          out='[]'
+          count=$(jq 'length' <<< "$input")
+          for i in $(seq 0 $((count - 1))); do
+            svc=$(jq -c ".[$i]" <<< "$input")
+            image=$(jq -r '.image // empty' <<< "$svc")
+            if [ -z "$image" ]; then echo "::error::Service $i has no image."; exit 1; fi
+            paths=$(jq -r '.paths // "."' <<< "$svc")
+            set -f
+            # shellcheck disable=SC2206 # word splitting is wanted, globbing is off
+            spec=($paths)
+            for p in $EXCLUDE_PATHS; do spec+=(":(exclude)$p"); done
+            set +f
+            sha=$(git log -1 --abbrev=7 --format=%h -- "${spec[@]}")
+            if [ -z "$sha" ]; then sha=$(git rev-parse --short=7 HEAD); fi
+            ref="ghcr.io/fintlabs/${image}:sha-${sha}"
+            echo "$image: $ref"
+            out=$(jq -c --argjson s "$svc" --arg sha "$sha" --arg ref "$ref" \
+                    '. + [{image: $s.image, dockerfile: ($s.dockerfile // "Dockerfile"), context: ($s.context // "."), sha: $sha, ref: $ref}]' <<< "$out")
+          done
+          echo "services=$out" >> "$GITHUB_OUTPUT"
 
       - name: Discover Kustomize targets
         id: targets
@@ -164,8 +193,13 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.services) }}
+    name: build ${{ matrix.image }}
     env:
-      IMAGE: ${{ needs.setup.outputs.image }}
+      IMAGE: ${{ matrix.ref }}
     steps:
       - uses: docker/login-action@v4
         with:
@@ -190,14 +224,14 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         uses: docker/build-push-action@v7
         with:
-          context: ${{ inputs.context }}
-          file: ${{ inputs.dockerfile }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           build-args: ${{ inputs.build-args }}
           push: true
           tags: ${{ env.IMAGE }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ needs.setup.outputs.sha }}
+            org.opencontainers.image.revision=${{ matrix.sha }}
 
   deploy:
     needs: [setup, build]
@@ -213,7 +247,6 @@ jobs:
     environment: ${{ needs.setup.outputs.environment }}
     env:
       ENVIRONMENT: ${{ needs.setup.outputs.environment }}
-      IMAGE: ${{ needs.setup.outputs.image }}
       NAMESPACE: ${{ matrix.target.namespace }}
     steps:
       - uses: actions/checkout@v7
@@ -228,6 +261,17 @@ jobs:
           esac
           echo "resource-group=rg-aks-$ENVIRONMENT" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve image references
+        id: images
+        env:
+          SERVICES: ${{ needs.setup.outputs.services }}
+        run: |
+          {
+            echo "images<<EOF"
+            jq -r '.[].ref' <<< "$SERVICES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Bake manifests with Kustomize
         id: bake
         uses: azure/k8s-bake@v4.1.1
@@ -235,13 +279,13 @@ jobs:
           renderEngine: kustomize
           kustomizationPath: ${{ matrix.target.path }}
 
-      - name: Substitute the image into the baked YAML
+      - name: Substitute the images into the baked YAML
         id: substitute
         uses: azure/k8s-artifact-substitute@v2.0.0
         with:
           manifests: ${{ steps.bake.outputs.manifestsBundle }}
-          # k8s-deploy skips custom resources, so this step also sets the image in FLAIS Application resources.
-          images: ${{ env.IMAGE }}
+          # k8s-deploy skips custom resources, so this step also sets the images in FLAIS Application resources.
+          images: ${{ steps.images.outputs.images }}
 
       - name: Prepare manifests for deployment
         id: manifests

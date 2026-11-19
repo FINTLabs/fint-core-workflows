@@ -48,17 +48,50 @@ jobs:
     secrets: inherit
 ```
 
+### More than one image (for example fint-core)
+Give the `services` input: a JSON list with one item for each image. Each item has `image` (required),
+`dockerfile`, `context` and `paths`. Each image gets its own tag from the last commit on its paths.
+The workflow builds each image and sets all of them in the same overlays.
+
+```yaml
+jobs:
+  cd:
+    uses: FINTLabs/fint-core-workflows/.github/workflows/cd-beta-api.yaml@main
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+    with:
+      exclude-paths: ""
+      services: |
+        [
+          {
+            "image": "fint-core-client-api-db",
+            "dockerfile": "fint-core-client-api/Dockerfile",
+            "paths": "fint-core-client-api fint-core-shared buildSrc build.gradle.kts settings.gradle.kts gradle.properties gradle gradlew gradlew.bat"
+          },
+          {
+            "image": "fint-core-adapter-gateway-db",
+            "dockerfile": "fint-core-adapter-gateway/Dockerfile",
+            "paths": "fint-core-adapter-gateway fint-core-shared buildSrc build.gradle.kts settings.gradle.kts gradle.properties gradle gradlew gradlew.bat"
+          }
+        ]
+```
+
+With these inputs, the tags are the same as the ones that fint-core's own `cd.yml` makes.
+
 ### Inputs
 All inputs are optional.
 
 | Input | Default | Description |
 |---|---|---|
-| `image-name` | repository name | image name in `ghcr.io/fintlabs` |
-| `dockerfile` | `Dockerfile` | path to the Dockerfile |
-| `context` | `.` | Docker build context |
-| `build-args` | none | Docker build arguments, one `KEY=value` for each line |
-| `app-paths` | `.` | paths whose last commit gives the image tag |
-| `exclude-paths` | `kustomize .github *.md` | paths that do not change the app |
+| `image-name` | repository name | image name in `ghcr.io/fintlabs` (one image) |
+| `dockerfile` | `Dockerfile` | path to the Dockerfile (one image) |
+| `context` | `.` | Docker build context (one image) |
+| `app-paths` | `.` | paths whose last commit gives the image tag (one image) |
+| `services` | none | JSON list for more than one image. When set, the four inputs above are not used. |
+| `exclude-paths` | `kustomize .github *.md` | paths that do not change any image. Use `""` to turn this off. |
+| `build-args` | none | Docker build arguments for all images, one `KEY=value` for each line |
 | `kustomize-dir` | `kustomize/overlays` | folder with one overlay folder for each environment |
 | `namespace` | overlay `namespace` field | namespace for a flat overlay |
 
@@ -68,4 +101,4 @@ All inputs are optional.
   Add protection rules to `api` if a person must approve production deploys.
 - Compare the overlays with the cluster before the first deploy, for example with `kubectl diff -k kustomize/overlays/beta`.
   Changes made by hand in the cluster are lost on the first automated deploy.
-- Repos with more than one image (for example `fint-core` and `fint-link-walker`) keep their own CD workflow.
+- Repos with more than one image use the `services` input (see above).
