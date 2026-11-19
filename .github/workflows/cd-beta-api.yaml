@@ -1,0 +1,277 @@
+name: CD (develop to beta, main to api)
+
+# Reusable deploy cycle, the same model as fint-core:
+#   - push to develop deploys to beta, push to main deploys to api (production)
+#   - the image is ghcr.io/fintlabs/<image-name>:sha-<last commit that changed the app>
+#   - the build is skipped when that image is already in GHCR, so a push that only
+#     changes kustomize, workflows or docs goes straight to deploy
+#   - Kustomize overlays are found automatically:
+#       kustomize/overlays/<env>/kustomization.yaml          -> one target, namespace from the overlay
+#       kustomize/overlays/<env>/<org>/kustomization.yaml    -> one target per org, namespace = folder name
+#     A folder that ends with .disabled is skipped.
+#
+# Caller (in the app repo, .github/workflows/cd.yaml):
+#
+#   on:
+#     push:
+#       branches: [main, develop]
+#   concurrency:
+#     group: deploy-${{ github.ref_name }}
+#     cancel-in-progress: false
+#   jobs:
+#     cd:
+#       uses: FINTLabs/fint-core-workflows/.github/workflows/cd-beta-api.yaml@main
+#       permissions:
+#         contents: read
+#         packages: write
+#       secrets: inherit
+#
+# The caller repo must have access to the org secrets AKS_BETA_FINT_GITHUB and AKS_API_FINT_GITHUB.
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: Image name in ghcr.io/fintlabs. Default is the repository name.
+        required: false
+        type: string
+        default: ""
+      dockerfile:
+        description: Path to the Dockerfile.
+        required: false
+        type: string
+        default: Dockerfile
+      context:
+        description: Docker build context.
+        required: false
+        type: string
+        default: .
+      build-args:
+        description: Docker build arguments, one KEY=value for each line.
+        required: false
+        type: string
+        default: ""
+      app-paths:
+        description: Space-separated paths. The last commit that changed them gives the image tag.
+        required: false
+        type: string
+        default: .
+      exclude-paths:
+        description: Space-separated paths that do not change the app (no new image when only these change).
+        required: false
+        type: string
+        default: kustomize .github *.md
+      kustomize-dir:
+        description: Folder that holds one overlay folder for each environment (beta, api).
+        required: false
+        type: string
+        default: kustomize/overlays
+      namespace:
+        description: Namespace for a flat overlay. Default is the namespace field in the overlay.
+        required: false
+        type: string
+        default: ""
+    outputs:
+      environment:
+        description: beta or api
+        value: ${{ jobs.setup.outputs.environment }}
+      image:
+        description: The deployed image
+        value: ${{ jobs.setup.outputs.image }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      sha: ${{ steps.version.outputs.sha }}
+      image: ${{ steps.version.outputs.image }}
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Map branch to environment
+        id: env
+        run: |
+          case "$GITHUB_REF_NAME" in
+            main)    echo "environment=api"  >> "$GITHUB_OUTPUT" ;;
+            develop) echo "environment=beta" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::No environment for branch $GITHUB_REF_NAME. Use main or develop."; exit 1 ;;
+          esac
+
+      - name: Resolve image version
+        id: version
+        env:
+          IMAGE_NAME: ${{ inputs.image-name || github.event.repository.name }}
+          APP_PATHS: ${{ inputs.app-paths }}
+          EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
+        run: |
+          set -euo pipefail
+          read -ra spec <<< "$APP_PATHS"
+          read -ra excludes <<< "$EXCLUDE_PATHS"
+          for p in "${excludes[@]}"; do spec+=(":(exclude)$p"); done
+          sha=$(git log -1 --abbrev=7 --format=%h -- "${spec[@]}")
+          if [ -z "$sha" ]; then
+            sha=$(git rev-parse --short=7 HEAD)
+          fi
+          image="ghcr.io/fintlabs/${IMAGE_NAME}:sha-${sha}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "image: $image"
+
+      - name: Discover Kustomize targets
+        id: targets
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+          KUSTOMIZE_DIR: ${{ inputs.kustomize-dir }}
+          NAMESPACE: ${{ inputs.namespace }}
+        run: |
+          set -euo pipefail
+          dir="$KUSTOMIZE_DIR/$ENVIRONMENT"
+          flat=""
+          for f in "$dir/kustomization.yaml" "$dir/kustomization.yml"; do
+            if [ -f "$f" ]; then flat="$f"; break; fi
+          done
+          if [ -n "$flat" ]; then
+            ns="$NAMESPACE"
+            if [ -z "$ns" ]; then
+              ns=$(sed -nE 's/^namespace:[[:space:]]*"?([^"#[:space:]]+)"?.*/\1/p' "$flat" | head -1)
+            fi
+            if [ -z "$ns" ]; then
+              echo "::error::$flat has no namespace field. Set the namespace input."; exit 1
+            fi
+            targets=$(jq -nc --arg p "$dir" --arg n "$ns" '[{path: $p, namespace: $n}]')
+          elif [ -d "$dir" ]; then
+            targets=$(find "$dir" -mindepth 2 -maxdepth 2 \( -name kustomization.yaml -o -name kustomization.yml \) \
+                        -not -path '*.disabled/*' -exec dirname {} \; | sort -u \
+                      | jq -Rsc 'split("\n") | map(select(length > 0)) | map({path: ., namespace: (split("/") | last)})')
+          else
+            targets='[]'
+          fi
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+          echo "targets in $dir: $targets"
+          if [ "$targets" = "[]" ]; then
+            echo "::warning::No Kustomize overlay for $ENVIRONMENT in $dir. Nothing to deploy."
+          fi
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ${{ needs.setup.outputs.image }}
+    steps:
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check whether the image already exists
+        id: exists
+        run: |
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE is already in the registry. The build is skipped."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.exists.outputs.exists == 'false'
+
+      - name: Build and push
+        if: steps.exists.outputs.exists == 'false'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          build-args: ${{ inputs.build-args }}
+          push: true
+          tags: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.setup.outputs.sha }}
+
+  deploy:
+    needs: [setup, build]
+    if: needs.setup.outputs.targets != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.setup.outputs.targets) }}
+    name: deploy ${{ matrix.target.namespace }} to ${{ needs.setup.outputs.environment }}
+    environment: ${{ needs.setup.outputs.environment }}
+    env:
+      ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+      IMAGE: ${{ needs.setup.outputs.image }}
+      NAMESPACE: ${{ matrix.target.namespace }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve cluster and resource group
+        id: aks
+        run: |
+          case "$ENVIRONMENT" in
+            beta) echo "cluster=aks-beta-fint-2021-11-23" >> "$GITHUB_OUTPUT" ;;
+            api)  echo "cluster=aks-api-fint-2022-02-08"  >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Unknown environment $ENVIRONMENT"; exit 1 ;;
+          esac
+          echo "resource-group=rg-aks-$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+
+      - name: Bake manifests with Kustomize
+        id: bake
+        uses: azure/k8s-bake@v4.1.1
+        with:
+          renderEngine: kustomize
+          kustomizationPath: ${{ matrix.target.path }}
+
+      - name: Substitute the image into the baked YAML
+        id: substitute
+        uses: azure/k8s-artifact-substitute@v2.0.0
+        with:
+          manifests: ${{ steps.bake.outputs.manifestsBundle }}
+          # k8s-deploy skips custom resources, so this step also sets the image in FLAIS Application resources.
+          images: ${{ env.IMAGE }}
+
+      - name: Prepare manifests for deployment
+        id: manifests
+        env:
+          SOURCE_DIRECTORY: ${{ steps.substitute.outputs.directory }}
+        run: |
+          set -euo pipefail
+          destination="$GITHUB_WORKSPACE/.k8s-deploy-manifests"
+          mkdir -p "$destination"
+          cp -aL -- "$SOURCE_DIRECTORY/." "$destination/"
+          echo "manifests=$destination" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v3.1.0
+        with:
+          creds: ${{ secrets[format('AKS_{0}_FINT_GITHUB', needs.setup.outputs.environment)] }}
+
+      - name: Set the target cluster
+        uses: azure/aks-set-context@v5.0.1
+        with:
+          cluster-name: ${{ steps.aks.outputs.cluster }}
+          resource-group: ${{ steps.aks.outputs.resource-group }}
+          admin: "true"
+
+      - name: Ensure namespace ${{ env.NAMESPACE }}
+        run: kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy
+        uses: azure/k8s-deploy@v7.0.1
+        with:
+          action: deploy
+          manifests: ${{ steps.manifests.outputs.manifests }}
+          pull-images: false
+          namespace: ${{ env.NAMESPACE }}
