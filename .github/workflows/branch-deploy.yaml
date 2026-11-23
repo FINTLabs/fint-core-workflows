@@ -101,7 +101,7 @@ jobs:
       services: ${{ steps.version.outputs.services }}
       targets: ${{ steps.targets.outputs.targets }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -201,7 +201,7 @@ jobs:
     env:
       IMAGE: ${{ matrix.ref }}
     steps:
-      - uses: docker/login-action@v4
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -217,12 +217,12 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.exists.outputs.exists == 'false'
 
       - name: Build and push
         if: steps.exists.outputs.exists == 'false'
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -249,7 +249,7 @@ jobs:
       ENVIRONMENT: ${{ needs.setup.outputs.environment }}
       NAMESPACE: ${{ matrix.target.namespace }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Resolve cluster and resource group
         id: aks
@@ -274,14 +274,14 @@ jobs:
 
       - name: Bake manifests with Kustomize
         id: bake
-        uses: azure/k8s-bake@v4.1.1
+        uses: azure/k8s-bake@bf8bfd33b007edea820fe80983239bca24012239 # v4.1.1
         with:
           renderEngine: kustomize
           kustomizationPath: ${{ matrix.target.path }}
 
       - name: Substitute the images into the baked YAML
         id: substitute
-        uses: azure/k8s-artifact-substitute@v2.0.0
+        uses: azure/k8s-artifact-substitute@158198edaa1482733b1ee54372e577c9aff7c6a8 # v2.0.0
         with:
           manifests: ${{ steps.bake.outputs.manifestsBundle }}
           # k8s-deploy skips custom resources, so this step also sets the images in FLAIS Application resources.
@@ -298,12 +298,12 @@ jobs:
           cp -aL -- "$SOURCE_DIRECTORY/." "$destination/"
           echo "manifests=$destination" >> "$GITHUB_OUTPUT"
 
-      - uses: azure/login@v3.1.0
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           creds: ${{ secrets[format('AKS_{0}_FINT_GITHUB', needs.setup.outputs.environment)] }}
 
       - name: Set the target cluster
-        uses: azure/aks-set-context@v5.0.1
+        uses: azure/aks-set-context@883bdc8d8d1d0fd87e66cc4ba6f0b618f9eb5281 # v5.0.1
         with:
           cluster-name: ${{ steps.aks.outputs.cluster }}
           resource-group: ${{ steps.aks.outputs.resource-group }}
@@ -313,7 +313,7 @@ jobs:
         run: kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy
-        uses: azure/k8s-deploy@v7.0.1
+        uses: azure/k8s-deploy@bf1ec05e1d736ac4ac70bae889d3ec48c79e2213 # v7.0.1
         with:
           action: deploy
           manifests: ${{ steps.manifests.outputs.manifests }}

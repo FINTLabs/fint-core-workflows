@@ -107,3 +107,5 @@ All inputs are optional.
 - Callers use a major tag, for example `@v1`. Do not use `@main`, because a change on `main` would reach all repos at the same time.
 - A fix that does not change the inputs or the behavior moves the `v1` tag to the new commit, and also gets a full tag such as `v1.0.1`.
 - A change that can break a caller gets a new major tag (`v2`). Each repo then moves to `v2` when the team chooses.
+- `branch-deploy.yaml` pins each action to a full commit SHA, with the version in a comment.
+  Dependabot (`.github/dependabot.yml`) opens a PR when a new action version comes out.
